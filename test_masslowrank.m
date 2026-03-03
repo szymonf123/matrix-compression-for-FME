@@ -2,7 +2,7 @@ riga = 1;
 nxx  = 5;
 pxx  = 2;
 rxx  = 0;
-ex = 2;
+ex = 1;
 ey = 1;
 
 % Generowanie macierzy masy

@@ -328,9 +328,10 @@ function first = lookup(knot_vector, l)
 end
 
 function first = first_dof_on_element(knot_vector, p, elem_number)
- [l, h] = element_boundary(knot_vector, p, elem_number);
- %minimalny indeks funkcji bazowej na elemencie
- first = find(knot_vector >= l, 1, 'first');
+    [l, h] = element_boundary(knot_vector, p, elem_number);
+    % Znajdujemy najbliższy indeks DOF
+    first = find(knot_vector <= l, 1, 'last') - p;
+    first = max(first, 1);
 end
 
 function [low,high] = element_boundary(knot_vector,p,elem_number)
@@ -355,11 +356,12 @@ end
 
 % Zwraca zakres (indeksy) funkcji bedacych niezerowymi na zadanym wektorze wezlow
 function [low,high] = dofs_on_element(knot_vector, p, elem_number)
+  % pierwsza funkcja bazowa nad elem_number
   low = first_dof_on_element(knot_vector, p, elem_number);
-  %poniewaz mamy dokladnie p+1 niezerowych funkcji nad elementem
-  high = low + p;
-  low = ceil(low);
-  high = floor(high);
+
+  % najwyższy indeks nie może przekroczyć liczby funkcji bazowych
+  n_dofs = length(knot_vector) - p - 1;
+  high = min(low + p, n_dofs);
 end
 
 % Row vector of points of the k-point Gaussian quadrature on [a, b]
