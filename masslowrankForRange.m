@@ -1,12 +1,12 @@
-function [A] = masslowrank(riga,nxx,pxx,rxx)
+function [A] = masslowrankForRange(riga, nxx, pxx, rxx, ex, ey)
 %riga: 0=iga, 1=mes, 2=riga
 
-%funkcja liczaca ilosc funkcji bazowych
+%funkcja liczaca liczbe funkcji bazowych
 compute_nr_basis_functions = @(knot_vector,p) size(knot_vector, 2) - p - 1;
 
 if riga==0
   %uniform knot vector B-splines C^(p-1)
-  knot2 = simple_knot(nxx,pxx)
+  knot2 = simple_knot(nxx,pxx);
 
 end
 if riga==1
@@ -37,173 +37,121 @@ if riga==2
     end
   end
 
-  knot2(k:k+pxx-1)=1;
+  knot2(k:k + pxx - 1) = 1;
 end
-knot_vectorx=knot2;
-knot_vectory=knot2;
+knot_vectorx = knot2;
+knot_vectory = knot2;
 
 px = compute_p(knot_vectorx);
 py = compute_p(knot_vectory);
 
-elementsx = number_of_elements(knot_vectorx,px);%liczba przedzialów wzdłuż osi x
-elementsy = number_of_elements(knot_vectory,py);%liczba przedzialów wzdłuż osi y
+elementsx = number_of_elements(knot_vectorx, px); %liczba przedziałów wzdłuż osi x
+elementsy = number_of_elements(knot_vectory, py); %liczba przedziałów wzdłuż osi y
 
-nx = number_of_dofs(knot_vectorx,px);%liczba B-splineów wzdłuż osi x
-ny = number_of_dofs(knot_vectory,py);%liczba B-splineów wzdłuż osi y
+%sprawdzenie poprawności indeksów przedziałów
+if ex > elementsx || ey > elementsy
+    error('Element index out of range');
+end
 
-%JESLI CHCEMY WYGENEROWAC JEDEN PATCH (JEDEN LUB KILKA ELEMENTOW)
-% TO TUTAJ MUSIMY OBLICZYC ILE MAMY FUNKCJI PO X (TO JEST nx) I PO Y (TO
-% JEST ny) NA TYM PATCHU
-A = sparse(nx*ny,nx*ny);
+local_dofs = (px + 1) * (py + 1); %liczba aktywnych elementów w danym przedziale
+A = zeros(local_dofs, local_dofs);
 
 %calki z B^x_i(x) B^y_j(y) B^x_k(x) B^y_l(y)
 %(i,k=1,...,Nx; j,l=1,...,Ny)
-%petla po elementach w osi x
-%JESLI CHCEMY WYGENEROWAC JEDEN PATCH TO TUTAJ PETLE SIE TYLKO PO
-%ELEMENTACH Z TEGO PATCHU PO x (ZAMIAST OD 1 DO elementx) ORAZ PO y
-%(ZAMAIST OD 1 DO elementy)
-for ex = 1:elementsx
-  % zakres funkcji niezerowych nad elementem
-  [xl,xh] = dofs_on_element(knot_vectorx,px,ex);
-  % zakres elementu (lewy i prawy brzeg po x)
-  [ex_bound_l,ex_bound_h] = element_boundary(knot_vectorx,px,ex);
-  %petla po elementach w osi y
-  for ey = 1:elementsy
-    % zakres funkcji niezerowych nad elementem
-    [yl,yh] = dofs_on_element(knot_vectory,py,ey);
-    % zakres elementu (lewy i prawy brzeg po x)
-    [ey_bound_l,ey_bound_h] = element_boundary(knot_vectory,py,ey);
-    % jakobian - rozmiar elementu
-    Jx = ex_bound_h - ex_bound_l;
-    Jy = ey_bound_h - ey_bound_l;
-    J = Jx*Jy;
-    % petla po funkcjach niezerowych nad danym elementem
-    %kazda funkcja trial "gada" z kazda funkcja test
-    %bi i bj to sa dwie funkcje 1d ktore przemnozone tworza jedna funkcje 2d trial
-    for bi = xl:xh
-      for bj = yl:yh
-        %bk i kl to sa dwie funkcje 1d ktore pomnozone tworza funkcje 2d test
-        for bk = xl:xh
-          for bl = yl:yh
-          %liczymy calke integral bi(x)bj(y)bk(x)bl(y) dxdy po elemencie
-          % = suma po punktach kwadratury qx i qy [jacobian*wx*wy*bi(qx)bj(qy)bk(qx)bl(qy)]
-          % punkty kwadratury w osi x nad elementem
-          qpx = quad_points(ex_bound_l,ex_bound_h,2*px+2*py+1);
-          % punkty kwadratury w osi y nad elementem
-          qpy = quad_points(ey_bound_l,ey_bound_h,2*px+2*py+1);
-          % wagi kwadratury w osi x nad elementem
-          qwx = quad_weights(ex_bound_l,ex_bound_h,2*px+2*py+1);
-          % wagi kwadratury w osi y nad elementem
-          qwy = quad_weights(ey_bound_l,ey_bound_h,2*px+2*py+1);
-          % petla po punktach kwadratury
-          for iqx = 1:size(qpx,2)
-            for iqy = 1:size(qpy,2)
-              % definicja funkcji ksztaltu
-              % B^x_k(qx)
-              funk= compute_spline(knot_vectorx,px,bi,qpx(iqx));
-              % B^y_l(qy)
-              funl= compute_spline(knot_vectory,py,bj,qpy(iqy));
-              % B^x_i(qx)
-              funi= compute_spline(knot_vectorx,px,bk,qpx(iqx));
-              % B^y_j(qy)
-              funj= compute_spline(knot_vectory,py,bl,qpy(iqy));
-              % B^x_i(qx) B^y_j(qy) B^x_k(qx) B^y_l(qy)
-              fun = funi*funj*funk*funl;
-              %JESLI CHCESZ ZMIENIC MASS MATRIX NA PRZEMNOZONY PRZEZ
-              %FUNKCJE H(x,y) TO TUTAJ ZMIENIASZ TO NA
-              % fun = fun*H(qpx(iqx),pqy(ipy))
 
-              % Calki z B^x_i(x) B^y_j(y) B^x_k(x) B^y_l(y) w qx i qy
-              % (i,k=1,...,Nx; j,l=1,...,Ny)
-              int = fun*qwx(iqx)*qwy(iqy)*J;
-              %JESLI CHCEMY WYGENEROWAC JEDEN PATCH TO TUTAJ MUSZE TERAZ
-              %PAMIETAC ZE NIE MAM CALEJ MACIERZY A TYLKO JEJ FRAGMENT
-              %ZAALOKOWANY I MUSZE ODPOWIEDNIO PRZESUNAC TE INDEKSY
-              %(WYKOMBINOWAC JAK TO SIE ROBI)
-              if (int~=0)
-                A((bj-1)*nx+bi,(bl-1)*nx+bk) = A((bj-1)*nx+bi,(bl-1)*nx+bk) + int;
-              end
-            end
-          end
+% zakres funkcji niezerowych nad elementem
+[xl, xh] = dofs_on_element(knot_vectorx, px, ex);
+% zakres elementu (lewy i prawy brzeg po x)
+[ex_bound_l, ex_bound_h] = element_boundary(knot_vectorx, px, ex);
+% zakres funkcji niezerowych nad elementem
+[yl, yh] = dofs_on_element(knot_vectory, py, ey);
+% zakres elementu (lewy i prawy brzeg po x)
+[ey_bound_l, ey_bound_h] = element_boundary(knot_vectory, py, ey);
+% jakobian - rozmiar elementu
+Jx = ex_bound_h - ex_bound_l;
+Jy = ey_bound_h - ey_bound_l;
+J = Jx * Jy;
+
+% = suma po punktach kwadratury qx i qy [jacobian*wx*wy*bi(qx)bj(qy)bk(qx)bl(qy)]
+nquad = 2 * px + 2 * py + 1;
+% punkty kwadratury w osi x nad elementem
+qpx = quad_points(ex_bound_l, ex_bound_h, nquad);
+% punkty kwadratury w osi y nad elementem
+qpy = quad_points(ey_bound_l, ey_bound_h, nquad);
+% wagi kwadratury w osi x nad elementem
+qwx = quad_weights(ex_bound_l, ex_bound_h, nquad);
+% wagi kwadratury w osi y nad elementem
+qwy = quad_weights(ey_bound_l, ey_bound_h, nquad);
+
+% macierze, do których zapiszemy wartości funkcji bazowych w punktach kwadratury
+Bx = zeros(px + 1, length(qpx));
+By = zeros(py + 1, length(qpy));
+
+% zapis wartości do macierzy
+for local_idx = 1:(px+1)
+    func_idx = xl + local_idx - 1; % indeks funkcji bazowej
+    for iq = 1:length(qpx)
+        Bx(local_idx, iq) = compute_spline(knot_vectorx, px, func_idx, qpx(iq));
+    end
+end
+
+for local_idx = 1:(py+1)
+    func_idx = yl + local_idx - 1; % indeks funkcji bazowej
+    for iq = 1:length(qpy)
+        By(local_idx, iq) = compute_spline(knot_vectory, py, func_idx, qpy(iq));
+    end
+end
+
+% petla po funkcjach niezerowych nad danym elementem
+%kazda funkcja trial "gada" z kazda funkcja test
+%bi i bj to sa dwie funkcje 1d ktore przemnozone tworza jedna funkcje 2d trial
+for bi = xl:1:xh
+  for bj = yl:1:yh
+    %bk i kl to sa dwie funkcje 1d ktore pomnozone tworza funkcje 2d test
+    for bk = xl:1:xh
+      for bl = yl:1:yh
+
+      bi_local = bi - xl + 1;
+      bj_local = bj - yl + 1;
+      bk_local = bk - xl + 1;
+      bl_local = bl - yl + 1;
+
+      row = (bj_local - 1) * (px + 1) + bi_local;
+      col = (bl_local - 1) * (px + 1) + bk_local;
+
+      %liczymy calke integral bi(x)bj(y)bk(x)bl(y) dxdy po elemencie
+      % petla po punktach kwadratury
+      for iqx = 1:size(qpx, 2)
+        for iqy = 1:size(qpy, 2)
+          % definicja funkcji ksztaltu
+          % B^x_i(qx)
+          funi = Bx(bi_local, iqx);
+          % B^y_j(qy)
+          funj = By(bj_local, iqy);
+          % B^x_k(qx)
+          funk = Bx(bk_local, iqx);
+          % B^y_l(qy)
+          funl = By(bl_local, iqy);
+          % B^x_i(qx) B^y_j(qy) B^x_k(qx) B^y_l(qy)
+          fun = funi * funj * funk * funl;
+          %JESLI CHCESZ ZMIENIC MASS MATRIX NA PRZEMNOZONY PRZEZ
+          %FUNKCJE H(x,y) TO TUTAJ ZMIENIASZ TO NA
+          % fun = fun*H(qpx(iqx),pqy(ipy))
+
+          % Calki z B^x_i(x) B^y_j(y) B^x_k(x) B^y_l(y) w qx i qy
+          % (i,k=1,...,Nx; j,l=1,...,Ny)
+          int = fun * qwx(iqx) * qwy(iqy) * J;
+          if (int ~= 0)
+            A(row, col) = A(row, col) + int;
           end
         end
+      end
       end
     end
   end
 end
 
 return
-
-A11 = A(1:nx*ny/2,1:nx*ny/2);
-A12 = A(1:nx*ny/2,nx*ny/2:nx*ny);
-
-%A11
-[U,S,V]=svd(A11);
-
-size_local=nx*ny/2;
-for i=1:size_local
-  diag(i)=S(i,i);
-end
-
-%diag
-
-figure(1);
-arg=[1:1:size_local];
-set(gca,'Fontsize',60);
-plot(arg,diag,'LineWidth',3);
-title('A11');
-hold on
-
-%A11inv
-A11inv=inverse(A11);
-[U,S,V]=svd(A11inv);
-
-size_local=nx*ny/2;
-for i=1:size_local
-  diag(i)=S(i,i);
-end
-
-%diag
-
-figure(2);
-arg=[1:1:size_local];
-set(gca,'Fontsize',60);
-plot(arg,diag,'LineWidth',3);
-title('A11^{-1}');
-hold on
-
-%A12
-
-[U,S,V]=svd(A12);
-size_local=nx*ny/2;
-for i=1:size_local
-  diag(i)=S(i,i);
-end
-
-%diag
-
-figure(3);
-arg=[1:1:size_local];
-set(gca,'Fontsize',60);
-plot(arg,diag,'LineWidth',3);
-title('A12');
-
-%A11^{-11}A12
-A11invA12=A11inv*A12;
-
-[U,S,V]=svd(A11invA12);
-size_local=nx*ny/2;
-for i=1:size_local
-  diag(i)=S(i,i);
-end
-
-%diag
-
-figure(4);
-arg=[1:1:size_local];
-set(gca,'Fontsize',60);
-plot(arg,diag,'LineWidth',3);
-title('A11^{-1}*A12');
 
 %funkcja wyliczajaca stopien wielomianow
 function p=compute_p(knot_vector)
@@ -379,9 +327,10 @@ function first = lookup(knot_vector, l)
     end
 end
 
-function first = first_dof_on_element(knot_vector,p,elem_number)
- [l,h] = element_boundary(knot_vector,p,elem_number);
- first = lookup(knot_vector, l) - p;
+function first = first_dof_on_element(knot_vector, p, elem_number)
+ [l, h] = element_boundary(knot_vector, p, elem_number);
+ %minimalny indeks funkcji bazowej na elemencie
+ first = find(knot_vector >= l, 1, 'first');
 end
 
 function [low,high] = element_boundary(knot_vector,p,elem_number)
@@ -404,11 +353,13 @@ function [low,high] = element_boundary(knot_vector,p,elem_number)
   end
 end
 
-% Zwraca zakres (indeksy) funckji bedacych niezerowymi na zadanym wektorze wezlow
-function [low,high] = dofs_on_element(knot_vector,p,elem_number)
-  low = first_dof_on_element(knot_vector,p,elem_number);
+% Zwraca zakres (indeksy) funkcji bedacych niezerowymi na zadanym wektorze wezlow
+function [low,high] = dofs_on_element(knot_vector, p, elem_number)
+  low = first_dof_on_element(knot_vector, p, elem_number);
   %poniewaz mamy dokladnie p+1 niezerowych funkcji nad elementem
   high = low + p;
+  low = ceil(low);
+  high = floor(high);
 end
 
 % Row vector of points of the k-point Gaussian quadrature on [a, b]
